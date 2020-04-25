@@ -1,0 +1,7 @@
+[build]
+  functions = "./functions"
+  command = "npm run build"
+  publish = "build"
+# FAUNADB_ADMIN_SECRET
+# FAUNADB_SERVER_SECRET
+# FAUNADB_CLIENT_SECRET
