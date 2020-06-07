@@ -1,4 +1,12 @@
 import React, { useEffect, useState, useReducer } from 'react'
+import {
+  BrowserRouter as Router,
+  Switch,
+  Route,
+  useHistory,
+  useParams,
+} from 'react-router-dom';
+
 import './App.css'
 import useSWR from 'swr'
 
@@ -6,6 +14,7 @@ const PHRASES_ENDPOINT = '/.netlify/functions/phrases'
 const GAME_ENDPOINT = '/.netlify/functions/games'
 const DEBUG = false;
 const MAX_PLAYERS = 30;
+const MAX_ROUNDS = 4
 
 async function fetchJSON(...args) {
   const res = await fetch(...args)
@@ -30,7 +39,8 @@ const PhraseList = ({data}) => {
   </ul>
 }
 
-const NewGame = ({initGame}) => {
+const NewGame = () => {
+  let history = useHistory();
   // local state for new game form
   const [numPlayers, setNumPlayers] = useState(1);
 
@@ -45,7 +55,8 @@ const NewGame = ({initGame}) => {
     // Could implement or call a resetGame here that would delete existing game & phrases
 
     if (response.ok) {
-      initGame(body)
+      // Redirect to page for game
+      history.push(`/${body.id}`)
     } else {
       console.error('Failed to create a game')
     }
@@ -74,8 +85,8 @@ const NewGame = ({initGame}) => {
   )
 }
 
-const PhraseForm = () => {
-  const { data: allPhrases, mutate } = useSWR(PHRASES_ENDPOINT)
+const PhraseForm = ({gameID}) => {
+  const { data: allPhrases, mutate } = useSWR(gameID ? `${PHRASES_ENDPOINT}/?gameID=${gameID}` : null)
   // local state for phrase form
   const [ phrase, setPhrase ] = useState("");
 
@@ -83,7 +94,7 @@ const PhraseForm = () => {
     e.preventDefault()
     try {
       const response = await fetch('/.netlify/functions/phrases', {
-        body: JSON.stringify({ phrase: phrase, round: 1 }),
+        body: JSON.stringify({ phrase: phrase, round: 1, gameID }),
         method: 'POST'
       })
       const body = await response.json()
@@ -115,9 +126,9 @@ const CurrentPhrase = ({phrase}) => {
 
 const Next = ({nextPhrase, gameID, currentPhrase, endTurn}) => {
   // onClick should increment currentPhrase round and set a new currentPhrase
-  // as a result of incrementing the currentPhrase round, the array of phrases
+  // as a result of incrementing the currentPhrase round; the array of phrases
   // should be updated as well, prior to seleting a new currentPhrase
-  const { data: allPhrases, mutate: mutatePhrases } = useSWR(PHRASES_ENDPOINT)
+  const { data: allPhrases, mutate: mutatePhrases } = useSWR(gameID ? `${PHRASES_ENDPOINT}/?gameID=${gameID}` : null)
   const { data: game, mutate: mutateGame } = useSWR([GAME_ENDPOINT, gameID], fetchResource)
 
   const setNext = async (e) => {
@@ -209,81 +220,98 @@ const Timer = ({endTimer}) => {
   return <p>Seconds: {seconds}</p>
 }
 
-const initialState = {
-  gameStage: 'init',
-  id: null,
-  round: 1,
-  maxPhrases: null,
-  phrase: null,
+const endGame = (history, msg) => {
+  history.push({
+    pathname: `/`,
+    state: { msg }
+  })
 }
 
+// gameStage values are: 'setup', 'ready', and 'playing'
 const gameReducer = (state, action) => {
   if (DEBUG) console.log(`dispatched ${action.type} with ${action.payload}`)
   switch (action.type) {
-    case 'UPDATE_GAME':
-      // { gameStage: 'setup', round: 1, maxPhrases: (action.payload.numPlayers * 3), phrase: null, phrases: null }
-      // eventually would store the game ID in state
-      // const { id, maxPhrases, round } = { game }
-      // return {...state, gameStage: 'setup', gameID: action.payload.gameID }
-      // If we're updating from the 'init' stage, we're ready to go into setup
-      if (state.gameStage === 'init') {
-        return { ...state, gameStage: 'setup', ...action.payload }
+    case 'UPDATE_GAME': {
+      // If we're in the ready state, but the game round has updated, our current phrase
+      // is no longer valid. It will be updated the next time the latest phrases are retrieved.
+      if (action.payload.round !== state.round) {
+        return { ...state, round: action.payload.round, phrase: null }
       }
 
-      // If we've updated the round, we should set a new current phrase as well
-      // if (action.payload.round > state.round) {
-      //   // ...except that we don't have access to allPhrases :(
-      // }
-      // Otherwise we're just updating game
       return { ...state, ...action.payload }
+    }
     // TODO: rename this? Once the functionality / purpose of this reducer is settled on,
     // it might go back to ADD_PHRASE, since we're not trying to keep it in sync
-    case 'UPDATE_PHRASES':
+    case 'UPDATE_PHRASES': {
       // If we've reached the max number of allowed phrases in our remote data, we're ready to play
       // May also get called when a phrase is updated (e.g. round is incremented)
       if (state.gameStage === 'setup' && action.payload.length >= state.maxPhrases) {
-        const phrases = phrasesForRound(action.payload, state.round)
-        if (phrases.length > 0) {
-          const currentPhrase = phrases[Math.floor(Math.random() * phrases.length)]
-          return { ...state, gameStage: 'ready', phrase: currentPhrase }
-        }
+        return { ...state, gameStage: 'ready' }
       }
-      // noop if we're not ready to set the current phrase yet
+
+      // noop if we're still in the setup stage
       return { ...state }
-    case 'NEXT_PHRASE':
+    }
+    case 'NEXT_PHRASE': {
       const { allPhrases, game } = { ...action.payload }
       const phrases = phrasesForRound(allPhrases, game.round)
-      // When a user's turn ends because we're out of phrases for this round,
-      // set the gameStage back to 'ready'
-      // Also set a new phrase from the next round. This could also be done
-      // instead in START_TURN, and we could set phrase to null here.
+      // When a user's turn ends because we're out of phrases for this round, set the gameStage back to 'ready'
       // TODO: the condition here could instead be if game.round !== state.round, I think...
-      if (phrases.length === 0 && state.round < 4) {
-        const nextPhrases = phrasesForRound(allPhrases, game.round + 1)
-        const currentPhrase = nextPhrases[Math.floor(Math.random() * nextPhrases.length)]
-        return { ...state, ...game, phrase: currentPhrase, gameStage: 'ready' }
-      } else if (state.round >= 4) {
-        return { ...state, gameStage: 'done' }
+      if (phrases.length === 0 && state.round < MAX_ROUNDS) {
+        return { ...state, ...game, gameStage: 'ready' }
       }
-      // If the round isn't done due to being out of phrases, just return a new
-      // phrase and keep going
+      // If the round isn't done due to being out of phrases, just return a new phrase and keep going
       const currentPhrase = phrases[Math.floor(Math.random() * phrases.length)]
       return { ...state, phrase: currentPhrase }
-    case 'START_TURN':
-      // TODO: we should set a new phrase here so the last one from the previous
-      // player's turn isn't by default the first one the next person starts with
-      return { ...state, gameStage: 'playing' }
-    case 'END_TURN':
-      // TODO: Check if the game is done or won, in which case the gameStage could be updated
+    }
+    case 'START_TURN': {
+      // Set a new phrase before allowing the turn to start
+      // N.B. there is the possibility that allPhrases or the round will not be updated
+      // from remote data when this runs. Eventually, this should be set up such that when
+      // a user initiates the start of a turn, we ensure there are no other active turns,
+      // other players are locked out of initiating a turn, and we retrieve remote data at that point.
+      const allPhrases = action.payload
+      const phrases = phrasesForRound(allPhrases, state.round)
+      const currentPhrase = phrases[Math.floor(Math.random() * phrases.length)]
+      return { ...state, gameStage: 'playing', phrase: currentPhrase }
+    }
+    // TODO: Similar to PhraseForm, this is throwing a warning re: performing state update
+    // on unmounted component.
+    case 'END_TURN': {
       return { ...state, gameStage: 'ready' }
+    }
     default:
       throw new Error(`Unknown action type: ${action.type}`)
   }
 }
 
 const App = () => {
-  // TODO: eventually should use destructuring assignment for state, and
-  // remove useState from above
+  return <Router>
+    <Switch>
+      <Route path='/:id' children={<Game />} />
+      <Route path='/' component={Init} />
+    </Switch>
+  </Router>
+}
+
+const Init = ({location}) => {
+  let optionalMsg = location?.state?.msg ? <p>{location?.state?.msg}</p> : null
+  return <main>
+    {optionalMsg}
+    <NewGame />
+  </main>
+}
+
+const Game = () => {
+  let history = useHistory()
+  let { id } = useParams()
+  const initialState = {
+    gameStage: 'setup',
+    id: id,
+    round: 1,
+    maxPhrases: null,
+    phrase: null,
+  }
   // Local state updates take place through the gameReducer. Some of the reducer actions
   // are triggered by useEffect with remote data as a dependency. Others are triggered
   // directly through user interactions.
@@ -293,25 +321,33 @@ const App = () => {
   // update the data at endpoints with POST or PUT request, and local changes are
   // forced with `mutate` or through useEffect below
   //
-  // TODO: Our phrases fetch will eventually need to pass the game ID to filter by
-  const { data: allPhrases } = useSWR(PHRASES_ENDPOINT, fetchJSON)
+  // Polling is set up so that multiple clients get remote updates, for example, if another client
+  // submits the last phrase during setup, or if the game round is incremented.
+  // This would probably be better with websockets, but this is ok for a first iteration.
+  // Probably the next incremental improvement would be using graphql to get both phrases and the
+  // game data in one request.
+  const { data: allPhrases } = useSWR(state.id ? `${PHRASES_ENDPOINT}/?gameID=${state.id}` : null, fetchJSON, { refreshInterval: 3000 })
   // Only attempt to fetch the game once we've created one and stored the ID
-  const { data: game } = useSWR(state.id ? [GAME_ENDPOINT, state.id] : null, fetchResource)
-
-  const initGame = (game) => {
-    dispatch({ type: 'UPDATE_GAME', payload: game })
-  }
+  const { data: game } = useSWR(state.id ? [GAME_ENDPOINT, state.id] : null, fetchResource, { refreshInterval: 3000 })
 
   const nextPhrase = (allPhrases, game) => {
+    // Redirect to the page for creating a new game if the game is done
+    if (game?.round >= MAX_ROUNDS) {
+      return endGame(history, 'Looks like you won! Play again?')
+    }
     dispatch({ type: 'NEXT_PHRASE', payload: { allPhrases, game } })
   }
 
   // Set current round and max number of phrases once we have our game
   useEffect(() => {
+    // Redirect to the page for creating a new game if the requested game is not found or if game is done
+    let msg = game?.round >= MAX_ROUNDS ? 'Looks like you won! Play again?' : 'Start a new game'
+    if (game?.name === 'NotFound' || game?.round >= MAX_ROUNDS) return endGame(history, msg)
+
     if (game) {
       dispatch({ type: 'UPDATE_GAME', payload: game })
     }
-  }, [game])
+  }, [game, history])
 
   useEffect(() => {
     if (allPhrases && allPhrases.length > 0) {
@@ -324,39 +360,26 @@ const App = () => {
   return (
     <main>
       {DEBUG && allPhrases && <PhraseList data={allPhrases} />}
-
-      {
-        state.gameStage === 'done' &&
-        <p>Looks like you won! Play again?</p>
-      }
-      {
-        // TODO: Based on gameStage instead?
-        // state.gameStage === 'init' &&
-        (!state.id || state.gameStage === 'done') &&
-        <NewGame initGame={initGame} />
-      }
       {
         // FIXME: getting this index.js:1 Warning: Can't perform a React state update on an unmounted component.
         // This is a no-op, but it indicates a memory leak in your application. To fix, cancel all subscriptions
         // and asynchronous tasks in a useEffect cleanup function. in PhraseForm(at App.js:345) (which was the line for rendering <PhraseForm />)
         state.gameStage === 'setup' &&
-        <PhraseForm />
+        <PhraseForm gameID={state.id} />
       }
       {
         state.gameStage === 'ready' &&
-        <Start startTimer={() => {dispatch({ type: 'START_TURN' })}} />
+        // TODO: May want to set remote game state as well, to prevent multiple players from taking a turn concurrently.
+        // That would probably happen in a side effect function, definitely would not happen in the reducer.
+        <Start startTimer={() => { dispatch({ type: 'START_TURN', payload: allPhrases })}} />
       }
       {
         state.gameStage === 'playing' &&
-        <CurrentPhrase phrase={state.phrase} />
-      }
-      {
-        state.gameStage === 'playing' &&
-        <Next nextPhrase={nextPhrase} gameID={state.id} currentPhrase={state.phrase} endTurn={() => {dispatch({ type: 'END_TURN' })}} />
-      }
-      {
-        state.gameStage === 'playing' &&
-        <Timer endTimer={() => {dispatch({ type: 'END_TURN' })}} />
+        <>
+          <CurrentPhrase phrase={state.phrase} />
+          <Next nextPhrase={nextPhrase} gameID={state.id} currentPhrase={state.phrase} endTurn={() => {dispatch({ type: 'END_TURN' })}} />
+          <Timer endTimer={() => {dispatch({ type: 'END_TURN' })}} />
+        </>
       }
     </main>
   )

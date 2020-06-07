@@ -8,10 +8,18 @@ const client = new faunadb.Client({
 
 exports.handler = async (event, context) => {
   console.log('Function `read-all` invoked')
-  const { round } = event.queryStringParameters
+  const { round, gameID } = event.queryStringParameters
+  let filter
+  if (gameID) {
+    filter = q.Match(q.Ref('indexes/phrases_by_gameID'), gameID)
+  } else {
+    filter = q.Match(q.Ref('indexes/all_phrases'))
+  }
   return client
-    // TODO: Add filters for game ID and round
-    .query(q.Paginate(q.Match(q.Ref('indexes/all_phrases'))))
+    // TODO? Add filters for round
+    // .query(q.Paginate(q.Match(q.Ref('indexes/phrases_by_game'), gameID)))
+    // .query(q.Paginate(q.Match(q.Ref('indexes/all_phrases'))))
+    .query(q.Paginate(filter))
     .then(response => {
       const itemRefs = response.data
       // console.log('itemRefs', itemRefs)

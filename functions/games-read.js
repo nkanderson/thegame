@@ -23,6 +23,7 @@ exports.handler = async (event, context) => {
         body: JSON.stringify(data)
       }
     })
+    // TODO: return 404 here when appropriate
     .catch(error => {
       console.log('error', error)
       return {

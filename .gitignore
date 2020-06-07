@@ -22,6 +22,10 @@
 .env.test.local
 .env.production.local
 
+# Commenting out queries in the faunadb console seems to throw errors,
+# so creating something locally to store in-progress or reference queries.
+scratch.fql
+
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

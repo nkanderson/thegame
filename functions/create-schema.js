@@ -56,6 +56,7 @@ async function createFaunaDB() {
     console.error(e)
   }
 
+  // TODO: Should create phrases_by_gameID index as well.
   try {
     let gamesColl = await client.query(q.IsCollection(q.Collection('games')))
     if (!gamesColl) {

@@ -11,6 +11,8 @@ exports.handler = async (event, context) => {
   /* parse the string body into a useable JS object */
   const data = JSON.parse(event.body)
   console.log('Function `create` invoked', data)
+  // TODO: May want to modify so gameID is validated and stored
+  // as a reference to game, rather than just the string
   const item = {
     data: data
   }
