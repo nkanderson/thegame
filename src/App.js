@@ -194,7 +194,7 @@ const Start = ({startTimer}) => {
 }
 
 const Timer = ({endTimer}) => {
-  const SEC = 10
+  const SEC = 45
   let [ seconds, setSeconds ] = useState(SEC)
   let [ isActive, setIsActive ] = useState(true)
 
