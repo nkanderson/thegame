@@ -5,3 +5,7 @@
 # FAUNADB_ADMIN_SECRET
 # FAUNADB_SERVER_SECRET
 # FAUNADB_CLIENT_SECRET
+[[redirects]]
+from = "/*"
+to = "/index.html"
+status = 200
