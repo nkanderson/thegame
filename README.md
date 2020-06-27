@@ -1,6 +1,6 @@
 # the game
 
-Uses Faunadb and Netlify to create a 4-round version of "the game". Current status is playable using multiple clients.
+Uses Faunadb and Netlify to create a 3-round version of "the game". Current status is playable using multiple clients.
 
 ## Deploy
 
