@@ -326,9 +326,9 @@ const Game = () => {
   // This would probably be better with websockets, but this is ok for a first iteration.
   // Probably the next incremental improvement would be using graphql to get both phrases and the
   // game data in one request.
-  const { data: allPhrases } = useSWR(state.id ? `${PHRASES_ENDPOINT}/?gameID=${state.id}` : null, fetchJSON, { refreshInterval: 3000 })
+  const { data: allPhrases } = useSWR(state.id ? `${PHRASES_ENDPOINT}/?gameID=${state.id}` : null, fetchJSON, { refreshInterval: 5000 })
   // Only attempt to fetch the game once we've created one and stored the ID
-  const { data: game } = useSWR(state.id ? [GAME_ENDPOINT, state.id] : null, fetchResource, { refreshInterval: 3000 })
+  const { data: game } = useSWR(state.id ? [GAME_ENDPOINT, state.id] : null, fetchResource, { refreshInterval: 5000 })
 
   const nextPhrase = (allPhrases, game) => {
     // Redirect to the page for creating a new game if the game is done
