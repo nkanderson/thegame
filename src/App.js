@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useReducer } from 'react'
 import {
   BrowserRouter as Router,
-  Switch,
+  Routes,
   Route,
-  useHistory,
+  useLocation,
+  useNavigate,
   useParams,
 } from 'react-router-dom';
 
@@ -31,7 +32,7 @@ const phrasesForRound = (phrases, round) => {
   return phrases.filter(phrase => phrase.round === round)
 }
 
-const PhraseList = ({data}) => {
+const PhraseList = ({ data }) => {
   return <ul>
     {data.map((item, index) => {
       return <li key={index}>{item.phrase}</li>
@@ -40,7 +41,7 @@ const PhraseList = ({data}) => {
 }
 
 const NewGame = () => {
-  let history = useHistory();
+  let navigate = useNavigate();
   // local state for new game form
   const [numPlayers, setNumPlayers] = useState(1);
 
@@ -56,7 +57,7 @@ const NewGame = () => {
 
     if (response.ok) {
       // Redirect to page for game
-      history.push(`/${body.id}`)
+      navigate(`/${body.id}`)
     } else {
       console.error('Failed to create a game')
     }
@@ -66,7 +67,7 @@ const NewGame = () => {
     <form onSubmit={createGame}>
       <label>
         How many players?
-      <input
+        <input
           className="num-players"
           type="number"
           value={numPlayers}
@@ -85,10 +86,10 @@ const NewGame = () => {
   )
 }
 
-const PhraseForm = ({gameID}) => {
+const PhraseForm = ({ gameID }) => {
   const { data: allPhrases, mutate } = useSWR(gameID ? `${PHRASES_ENDPOINT}/?gameID=${gameID}` : null)
   // local state for phrase form
-  const [ phrase, setPhrase ] = useState("");
+  const [phrase, setPhrase] = useState("");
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -98,10 +99,10 @@ const PhraseForm = ({gameID}) => {
         method: 'POST'
       })
       const body = await response.json()
-      mutate([ ...allPhrases, body ])
+      mutate([...allPhrases, body])
       setPhrase("")
       return body
-    } catch(e) {
+    } catch (e) {
       console.error(e)
     }
   }
@@ -119,12 +120,12 @@ const PhraseForm = ({gameID}) => {
   </form>
 }
 
-const CurrentPhrase = ({phrase}) => {
+const CurrentPhrase = ({ phrase }) => {
   if (!phrase || !phrase.phrase) return null
   return <div><p className="current-phrase">Current phrase: {phrase.phrase}</p></div>
 }
 
-const Next = ({nextPhrase, gameID, currentPhrase, endTurn}) => {
+const Next = ({ nextPhrase, gameID, currentPhrase, endTurn }) => {
   // onClick should increment currentPhrase round and set a new currentPhrase
   // as a result of incrementing the currentPhrase round; the array of phrases
   // should be updated as well, prior to seleting a new currentPhrase
@@ -189,14 +190,14 @@ const Next = ({nextPhrase, gameID, currentPhrase, endTurn}) => {
   return <button onClick={setNext} className="next-button">Next</button>
 }
 
-const Start = ({startTimer}) => {
+const Start = ({ startTimer }) => {
   return <button onClick={startTimer} className="start-button">Start</button>
 }
 
-const Timer = ({endTimer}) => {
+const Timer = ({ endTimer }) => {
   const SEC = 45
-  let [ seconds, setSeconds ] = useState(SEC)
-  let [ isActive, setIsActive ] = useState(true)
+  let [seconds, setSeconds] = useState(SEC)
+  let [isActive, setIsActive] = useState(true)
 
   const reset = () => {
     setSeconds(SEC)
@@ -220,11 +221,11 @@ const Timer = ({endTimer}) => {
   return <p>Seconds: {seconds}</p>
 }
 
-const endGame = (history, msg) => {
-  history.push({
-    pathname: `/`,
-    state: { msg }
-  })
+const endGame = (navigate, msg) => {
+  navigate(
+    '/',
+    { state: { msg } },
+  )
 }
 
 // gameStage values are: 'setup', 'ready', and 'playing'
@@ -287,15 +288,16 @@ const gameReducer = (state, action) => {
 
 const App = () => {
   return <Router>
-    <Switch>
-      <Route path='/:id' children={<Game />} />
-      <Route path='/' component={Init} />
-    </Switch>
+    <Routes>
+      <Route path='/:id' element={<Game />} />
+      <Route path='/' element={<Init />} />
+    </Routes>
   </Router>
 }
 
-const Init = ({location}) => {
-  let optionalMsg = location?.state?.msg ? <p>{location?.state?.msg}</p> : null
+const Init = () => {
+  const { state } = useLocation()
+  let optionalMsg = state?.msg ? <p>{state?.msg}</p> : null
   return <main>
     {optionalMsg}
     <NewGame />
@@ -303,7 +305,7 @@ const Init = ({location}) => {
 }
 
 const Game = () => {
-  let history = useHistory()
+  let navigate = useNavigate()
   let { id } = useParams()
   const initialState = {
     gameStage: 'setup',
@@ -333,7 +335,7 @@ const Game = () => {
   const nextPhrase = (allPhrases, game) => {
     // Redirect to the page for creating a new game if the game is done
     if (game?.round >= MAX_ROUNDS) {
-      return endGame(history, 'Looks like you won! Play again?')
+      return endGame(navigate, 'Looks like you won! Play again?')
     }
     dispatch({ type: 'NEXT_PHRASE', payload: { allPhrases, game } })
   }
@@ -342,12 +344,12 @@ const Game = () => {
   useEffect(() => {
     // Redirect to the page for creating a new game if the requested game is not found or if game is done
     let msg = game?.round >= MAX_ROUNDS ? 'Looks like you won! Play again?' : 'Start a new game'
-    if (game?.name === 'NotFound' || game?.round >= MAX_ROUNDS) return endGame(history, msg)
+    if (game?.name === 'NotFound' || game?.round >= MAX_ROUNDS) return endGame(navigate, msg)
 
     if (game) {
       dispatch({ type: 'UPDATE_GAME', payload: game })
     }
-  }, [game, history])
+  }, [game, navigate])
 
   useEffect(() => {
     if (allPhrases && allPhrases.length > 0) {
@@ -371,14 +373,14 @@ const Game = () => {
         state.gameStage === 'ready' &&
         // TODO: May want to set remote game state as well, to prevent multiple players from taking a turn concurrently.
         // That would probably happen in a side effect function, definitely would not happen in the reducer.
-        <Start startTimer={() => { dispatch({ type: 'START_TURN', payload: allPhrases })}} />
+        <Start startTimer={() => { dispatch({ type: 'START_TURN', payload: allPhrases }) }} />
       }
       {
         state.gameStage === 'playing' &&
         <>
           <CurrentPhrase phrase={state.phrase} />
-          <Next nextPhrase={nextPhrase} gameID={state.id} currentPhrase={state.phrase} endTurn={() => {dispatch({ type: 'END_TURN' })}} />
-          <Timer endTimer={() => {dispatch({ type: 'END_TURN' })}} />
+          <Next nextPhrase={nextPhrase} gameID={state.id} currentPhrase={state.phrase} endTurn={() => { dispatch({ type: 'END_TURN' }) }} />
+          <Timer endTimer={() => { dispatch({ type: 'END_TURN' }) }} />
         </>
       }
     </main>
