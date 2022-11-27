@@ -3,6 +3,7 @@ import {
   BrowserRouter as Router,
   Routes,
   Route,
+  useLocation,
   useNavigate,
   useParams,
 } from 'react-router-dom';
@@ -221,10 +222,10 @@ const Timer = ({ endTimer }) => {
 }
 
 const endGame = (navigate, msg) => {
-  navigate({
-    pathname: `/`,
-    state: { msg }
-  })
+  navigate(
+    '/',
+    { state: { msg } },
+  )
 }
 
 // gameStage values are: 'setup', 'ready', and 'playing'
@@ -294,8 +295,9 @@ const App = () => {
   </Router>
 }
 
-const Init = ({ location }) => {
-  let optionalMsg = location?.state?.msg ? <p>{location?.state?.msg}</p> : null
+const Init = () => {
+  const { state } = useLocation()
+  let optionalMsg = state?.msg ? <p>{state?.msg}</p> : null
   return <main>
     {optionalMsg}
     <NewGame />
